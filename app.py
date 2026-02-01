@@ -457,7 +457,7 @@ def page_input_screen():
                 default=[]
             )
 
-            submit_button = st.form_submit_button("分析を開始する", type="primary")
+            submit_button = st.form_submit_button("分析を開始する✨", type="primary")
 
             if submit_button:
                 required_fields = [q_prot, q_fiber, q_fish, q_chicken, q_fermented, q_bluefish, q_gluten, q_carbs, q_fastfood, q_procmeat]
