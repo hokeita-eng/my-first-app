@@ -457,7 +457,7 @@ def page_input_screen():
                 default=[]
             )
 
-            submit_button = st.form_submit_button("分析を開始する ✨", type="primary")
+            submit_button = st.form_submit_button("分析を開始する", type="primary")
 
             if submit_button:
                 required_fields = [q_prot, q_fiber, q_fish, q_chicken, q_fermented, q_bluefish, q_gluten, q_carbs, q_fastfood, q_procmeat]
@@ -504,7 +504,7 @@ def page_result_screen():
             st.image(st.session_state['uploaded_file'], caption="解析画像", width=250)
     
     with col_data:
-        st.subheader("🛠️ 解析データ編集")
+        st.subheader("解析データ編集")
         st.info("食材や分量が異なる場合は修正してください。下の栄養素とスコアに即座に反映されます。")
         edited_df = st.data_editor(
             st.session_state['ingredients_df'],
@@ -518,7 +518,7 @@ def page_result_screen():
 
     nutrients = calculate_total_nutrients(st.session_state['ingredients_df'])
 
-    st.subheader("📊 詳細栄養バランスとメンタルヘルス解説")
+    st.subheader("詳細栄養バランスとメンタルヘルス解説")
     n_col1, n_col2, n_col3 = st.columns(3)
     
     with n_col1:
