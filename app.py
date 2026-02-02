@@ -623,4 +623,4 @@ elif st.session_state['page'] == 'result':
 
 # フッター
 st.markdown("---")
-st.caption("Developed for Jin Nakazawa Laboratory / WellComp B2 Research Demo")
+st.caption("Developed for Nakazawa Okoshi Laboratory / WellComp B2 Research Demo")
