@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 # --- 初期設定 ---
 st.set_page_config(
-    page_title="メンタルヘルス食習慣スコア",
+    page_title="メンタルヘルス食習慣スコア Extended",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -15,6 +15,8 @@ st.set_page_config(
 # --- セッション状態の初期化 ---
 if 'page' not in st.session_state:
     st.session_state['page'] = 'input'
+if 'input_step' not in st.session_state:
+    st.session_state['input_step'] = 1  # 1: 問1-10, 2: 問11-20, 3: 画像アップロード
 if 'uploaded_file' not in st.session_state:
     st.session_state['uploaded_file'] = None
 if 'ingredients_df' not in st.session_state:
@@ -24,7 +26,7 @@ if 'user_profile' not in st.session_state:
 if 'habit_answers' not in st.session_state:
     st.session_state['habit_answers'] = {}
 
-# --- API連携 & 画像解析ロジック ---
+# --- API連携 & 画像解析ロジック (変更なし) ---
 
 def call_logmeal_api(image_file, api_token):
     headers = {'Authorization': 'Bearer ' + api_token}
@@ -98,7 +100,7 @@ def calculate_total_nutrients(df_ingredients):
         "magnesium": round(total.get("マグネシウム(mg)", 0), 1)
     }
 
-# --- ロジック: 3つの要素による総合スコア算出 (複雑化・絵文字削除) ---
+# --- ロジック: スコア算出 (20問対応版) ---
 
 def calculate_comprehensive_score(habit_answers, user_profile, nutrients, constitution_type):
     
@@ -109,68 +111,119 @@ def calculate_comprehensive_score(habit_answers, user_profile, nutrients, consti
     }
 
     # --- 1. 食習慣アンケート (Habit Score) ---
+    # 20問あるため、配点バランスを調整
     h_score = 0
-    # 単純加算ロジック
-    ans_p = habit_answers.get("protein")
-    if ans_p == "毎食摂取": h_score += 10
-    elif ans_p == "1日2食": h_score += 6
-    elif ans_p == "1日1食": h_score += 3
     
-    ans_f = habit_answers.get("fiber")
-    if ans_f == "1日3皿分以上": h_score += 10
-    elif ans_f == "1日2皿分": h_score += 6
-    elif ans_f == "1日1皿分": h_score += 3
-
-    ans_fish = habit_answers.get("fish")
-    if ans_fish == "週3回以上": h_score += 10
-    elif ans_fish == "週1-2回": h_score += 5
-    elif ans_fish == "月1-3回": h_score += 3
-
-    ans_ck = habit_answers.get("chicken")
-    if ans_ck == "週3回以上": h_score += 10
-    elif ans_ck == "週1-2回": h_score += 5
-    elif ans_ck == "月1-3回": h_score += 3
-
-    ans_fem = habit_answers.get("fermented")
-    if ans_fem == "ほぼ毎日": h_score += 10
-    elif ans_fem == "週3-4回": h_score += 6
-    elif ans_fem == "週1-2回": h_score += 3
-
-    ans_bf = habit_answers.get("bluefish")
-    if ans_bf == "週2回以上": h_score += 10
-    elif ans_bf == "週1回": h_score += 5
-    elif ans_bf == "月1-3回": h_score += 3
-
+    # === 基本10問 (Core Habits) ===
+    # 1. グルテン
     ans_gl = habit_answers.get("gluten")
-    if ans_gl == "週1回未満": h_score += 10
-    elif ans_gl == "週1-2回": h_score += 5
-    elif ans_gl == "ほぼ毎日": h_score -= 5
+    if ans_gl == "週1回未満": h_score += 5
+    elif ans_gl == "ほぼ毎日": h_score -= 3
 
+    # 2. タンパク質
+    ans_p = habit_answers.get("protein")
+    if ans_p == "毎食摂取": h_score += 5
+    elif ans_p == "1日1食": h_score += 1
+
+    # 3. 食物繊維
+    ans_f = habit_answers.get("fiber")
+    if ans_f == "1日3皿分以上": h_score += 5
+    elif ans_f == "1日1皿分": h_score += 2
+
+    # 4. 糖質
     ans_cb = habit_answers.get("carbs")
-    if ans_cb == "適量(茶碗1杯/食)": h_score += 10
-    elif ans_cb == "多い(毎日大盛り)": h_score -= 5
-    elif ans_cb == "過剰(菓子パン等含む)": h_score -= 10
+    if ans_cb == "適量(茶碗1杯/食)": h_score += 5
+    elif ans_cb == "過剰(菓子パン等含む)": h_score -= 5
 
+    # 5. 魚全般
+    ans_fish = habit_answers.get("fish")
+    if ans_fish == "週3回以上": h_score += 5
+    elif ans_fish == "週1-2回": h_score += 3
+
+    # 6. 鶏肉
+    ans_ck = habit_answers.get("chicken")
+    if ans_ck == "週3回以上": h_score += 5
+    elif ans_ck == "週1-2回": h_score += 3
+
+    # 7. ファストフード
     ans_ff = habit_answers.get("fastfood")
-    if ans_ff == "月1回未満": h_score += 10
-    elif ans_ff == "月2-3回": h_score += 5
-    elif ans_ff == "週1-2回": h_score -= 5
-    elif ans_ff == "週3回以上": h_score -= 10
+    if ans_ff == "月1回未満": h_score += 5
+    elif ans_ff == "週3回以上": h_score -= 5
 
+    # 8. 加工肉
     ans_pm = habit_answers.get("processed_meat")
-    if ans_pm == "週1回未満": h_score += 10
-    elif ans_pm == "週1-2回": h_score += 5
-    elif ans_pm == "週3-5回": h_score -= 5
-    elif ans_pm == "ほぼ毎日": h_score -= 10
+    if ans_pm == "週1回未満": h_score += 5
+    elif ans_pm == "ほぼ毎日": h_score -= 5
+
+    # 9. 発酵食品
+    ans_fem = habit_answers.get("fermented")
+    if ans_fem == "ほぼ毎日": h_score += 5
+    elif ans_fem == "週3-4回": h_score += 3
+
+    # 10. 青魚
+    ans_bf = habit_answers.get("bluefish")
+    if ans_bf == "週2回以上": h_score += 5
+    elif ans_bf == "週1回": h_score += 3
+
+    # === 追加10問 (Lifestyle & Mental Habits) ===
     
+    # 11. 水分摂取
+    ans_w = habit_answers.get("water")
+    if ans_w == "1.5L以上": h_score += 5
+    elif ans_w == "1.0L未満": h_score -= 2
+    
+    # 12. カフェイン
+    ans_cf = habit_answers.get("caffeine")
+    if ans_cf == "1日1-2杯": h_score += 3
+    elif ans_cf == "1日5杯以上": h_score -= 5
+    
+    # 13. アルコール
+    ans_al = habit_answers.get("alcohol")
+    if ans_al == "飲まない": h_score += 5
+    elif ans_al == "ほぼ毎日": h_score -= 5
+    
+    # 14. 食べる速さ
+    ans_sp = habit_answers.get("eat_speed")
+    if ans_sp == "ゆっくり(20分以上)": h_score += 5
+    elif ans_sp == "早い(10分未満)": h_score -= 3
+    
+    # 15. 朝食
+    ans_br = habit_answers.get("breakfast")
+    if ans_br == "毎日食べる": h_score += 5
+    elif ans_br == "食べない": h_score -= 3
+    
+    # 16. 夜遅くの食事
+    ans_ln = habit_answers.get("late_night")
+    if ans_ln == "寝る3時間前まで": h_score += 5
+    elif ans_ln == "寝る直前が多い": h_score -= 5
+    
+    # 17. 野菜の種類
+    ans_vv = habit_answers.get("veg_variety")
+    if ans_vv == "5種類以上": h_score += 5
+    elif ans_vv == "ほぼ食べない": h_score -= 3
+
+    # 18. 乳製品
+    ans_dr = habit_answers.get("dairy")
+    if ans_dr == "適度(1日1杯/個)": h_score += 3
+    elif ans_dr == "過剰に摂る": h_score -= 2
+
+    # 19. おやつ・間食
+    ans_sn = habit_answers.get("snack")
+    if ans_sn == "ほとんど食べない": h_score += 5
+    elif ans_sn == "毎日甘いもの": h_score -= 5
+
+    # 20. 油の質
+    ans_oil = habit_answers.get("oil")
+    if ans_oil == "オリーブ/アマニ油中心": h_score += 5
+    elif ans_oil == "揚げ物が多い": h_score -= 5
+
+    # 合計調整 (満点100に正規化)
+    # 理論上の最大値は約100、最小値はマイナスになりうるのでクリッピング
     h_score = max(0, min(h_score, 100))
     breakdown["habit"]["score"] = h_score
-    breakdown["habit"]["reasons"].append(f"・食習慣アンケート回答に基づく基礎算出点: {h_score}点")
+    breakdown["habit"]["reasons"].append(f"・20項目の食習慣・生活習慣アンケート回答: {h_score}点")
 
-    # --- 2. 個別リスク因子 (Complex Risk Factors) ---
-    # 基準点100点からの減点・調整方式
-    # [複雑化] ストレスレベル、アレルギー整合性、サプリメントの相乗効果を考慮
-    
+    # --- 2. 個別リスク因子 (Risk Score) ---
     r_score = 100
     risk_log = []
     
@@ -178,161 +231,113 @@ def calculate_comprehensive_score(habit_answers, user_profile, nutrients, consti
     allergies = user_profile.get("allergies", [])
     supplements = user_profile.get("supplements", [])
     
-    # (1) ストレス負荷係数
-    stress_penalty = 0
+    # ストレス負荷
     if stress_level == "High":
-        stress_penalty = 20
-        risk_log.append("・高ストレス状態によるコルチゾール分泌過多リスク (-20)")
+        r_score -= 20
+        risk_log.append("・高ストレス状態によるコルチゾール過多 (-20)")
     elif stress_level == "Medium":
-        stress_penalty = 10
-        risk_log.append("・中程度のストレス負荷による栄養消費増大リスク (-10)")
-        
-    # (2) アレルギー・コンプライアンス（整合性）チェック
-    # アレルギーがあるのに、食習慣でその項目を頻繁に摂取している場合は重ペナルティ
-    allergy_penalty = 0
-    if "グルテン" in allergies:
-        if habit_answers.get("gluten") in ["週3-5回", "ほぼ毎日"]:
-            allergy_penalty += 20
-            risk_log.append("・グルテン不耐性ありかつ高頻度摂取による腸内炎症リスク大 (-20)")
-        else:
-            risk_log.append("・グルテン除去意識によるリスク管理 (±0)")
-    elif allergies:
-         allergy_penalty += 10
-         risk_log.append(f"・アレルギー因子保持による潜在的リスク (-10)")
-
-    # (3) 既往歴リスク
-    history = user_profile.get("medical_history", "")
-    history_penalty = 0
-    if history:
-        history_penalty = 15
-        risk_log.append(f"・既往歴({history})による代謝負荷リスク (-15)")
-
-    # (4) サプリメント相乗効果・緩和効果
-    supp_bonus = 0
-    if not supplements:
-        supp_bonus = -5
-        risk_log.append("・サプリメントによる栄養補助なし (-5)")
-    else:
-        base_bonus = 5
-        # シナジーボーナス: ビタミンD + 亜鉛 or マグネシウム（メンタルヘルス防御セット）
-        # ※ デモデータではサプリ選択肢に亜鉛がある
-        if "ビタミンD" in supplements and "亜鉛" in supplements:
-            base_bonus += 10
-            risk_log.append("・ビタミンDと亜鉛の同時摂取による抗ストレス相乗効果 (+15)")
-        else:
-            risk_log.append(f"・サプリメント摂取による栄養底上げ効果 (+{base_bonus})")
-        supp_bonus = base_bonus
-
-    # リスクスコア計算
-    r_score = 100 - stress_penalty - allergy_penalty - history_penalty + supp_bonus
-    
-    # ストレスが高くサプリがない場合、さらにペナルティ（消耗激しいのに補給なし）
-    if stress_level == "High" and not supplements:
         r_score -= 10
-        risk_log.append("・高ストレス下での微量栄養素枯渇リスク（サプリなし） (-10)")
+        risk_log.append("・中程度のストレス負荷 (-10)")
+        
+    # アレルギー整合性
+    if "グルテン" in allergies and habit_answers.get("gluten") in ["週3-5回", "ほぼ毎日"]:
+        r_score -= 20
+        risk_log.append("・グルテン不耐性ありかつ高頻度摂取 (-20)")
+    elif allergies:
+         r_score -= 10
+         risk_log.append(f"・アレルギー因子保持 (-10)")
+
+    # 既往歴
+    if user_profile.get("medical_history"):
+        r_score -= 15
+        risk_log.append("・既往歴による代謝負荷リスク (-15)")
+
+    # サプリメント
+    if not supplements:
+        r_score -= 5
+        risk_log.append("・サプリメント補助なし (-5)")
+    else:
+        if "ビタミンD" in supplements and "亜鉛" in supplements:
+            r_score += 15
+            risk_log.append("・VitD+亜鉛の抗ストレス相乗効果 (+15)")
+        else:
+            r_score += 5
+            risk_log.append("・サプリメントによる補助 (+5)")
 
     r_score = max(0, min(r_score, 100))
     breakdown["risk"]["score"] = r_score
     breakdown["risk"]["reasons"] = risk_log
 
-    # --- 3. 個別推定指標 (Complex Estimated Indicators) ---
-    # 今回の食事内容が、体質や現在の状態に対して「機能的」かどうかを判定
-    # [複雑化] 単純なPFCだけでなく、「神経伝達物質生成指数」と「炎症ポテンシャル」を推定
-    
+    # --- 3. 個別推定指標 (Indicator Score) ---
     i_score = 0
     ind_log = []
     
-    # データ準備
     p = nutrients['protein']
-    f_total = nutrients['fat'] # 飽和脂肪酸等は簡易計算で使用
     c = nutrients['carbs']
     fiber = nutrients['fiber_sol'] + nutrients['fiber_insol']
     minerals = nutrients['zinc'] + nutrients['magnesium'] + nutrients['iron']
     vitamins = nutrients['vit_b1'] + nutrients['vit_c']
     cal = nutrients['calories']
 
-    # (1) 神経伝達物質生成指数 (NT-Index: Neuro-Transmitter Index)
-    # メンタル安定にはタンパク質(アミノ酸)とビタミンB群、鉄、亜鉛が必須
-    # 簡易スコア: (タンパク質 * 1 + ミネラル合計 * 2 + ビタミン合計 * 0.5)
+    # NT-Index
     nt_index = (p * 1.0) + (minerals * 2.0) + (vitamins * 0.5)
-    
-    nt_threshold = 40 # 閾値（仮）
-    if nt_index > nt_threshold:
+    if nt_index > 40:
         i_score += 40
-        ind_log.append(f"・NT-Index(神経伝達物質生成能)が高水準: {int(nt_index)} (基準{nt_threshold}) (+40)")
+        ind_log.append(f"・NT-Index(神経伝達物質生成能) 高水準 (+40)")
     elif nt_index > 20:
         i_score += 20
-        ind_log.append(f"・NT-Index(神経伝達物質生成能)が標準レベル: {int(nt_index)} (+20)")
+        ind_log.append(f"・NT-Index(神経伝達物質生成能) 標準 (+20)")
     else:
         i_score += 5
-        ind_log.append(f"・NT-Index(神経伝達物質生成能)が低水準: {int(nt_index)} (+5)")
+        ind_log.append(f"・NT-Index(神経伝達物質生成能) 低水準 (+5)")
 
-    # (2) 炎症ポテンシャル (Inflammation Potential)
-    # 糖質過多かつ食物繊維不足は炎症リスク大
-    # 式: (糖質 / (食物繊維 + 1)) * 係数
+    # 炎症ポテンシャル
     inflam_score = c / (fiber + 1.0)
-    
-    # 体質による分岐
     c_type = constitution_type['type']
     
     if c_type == "糖質依存・血糖値スパイク型":
-        # 厳しく判定
         if inflam_score > 10:
             i_score -= 20
-            ind_log.append("・体質に対し糖質比率が高く、血糖値スパイクの危険性大 (-20)")
+            ind_log.append("・体質に対し糖質比率が高く危険 (-20)")
         else:
             i_score += 20
-            ind_log.append("・易血糖変動型体質に適した低糖質・高繊維な食事内容 (+20)")
+            ind_log.append("・体質に適した低糖質食 (+20)")
     elif c_type == "慢性炎症・内臓疲労型":
         if fiber < 5.0:
             i_score -= 15
-            ind_log.append("・炎症体質に対し抗炎症成分(食物繊維)が不足 (-15)")
+            ind_log.append("・抗炎症成分(繊維)不足 (-15)")
         else:
             i_score += 15
-            ind_log.append("・腸内ケアに必要な食物繊維量が確保されている (+15)")
+            ind_log.append("・十分な繊維量 (+15)")
     elif c_type == "タンパク質不足・エネルギー欠乏型":
         if p < 20.0:
             i_score -= 20
-            ind_log.append("・欠乏型体質に対しタンパク質絶対量が不足 (-20)")
+            ind_log.append("・タンパク質絶対量不足 (-20)")
         else:
             i_score += 20
-            ind_log.append("・必要量のタンパク質が供給され、意欲回復に寄与 (+20)")
+            ind_log.append("・必要タンパク質確保 (+20)")
     else:
-        # バランス型
         if 500 < cal < 900:
              i_score += 10
-             ind_log.append("・適正なエネルギーバランス (+10)")
-        else:
-             ind_log.append("・エネルギーバランスの乱れ (±0)")
+             ind_log.append("・適正カロリー (+10)")
 
-    # (3) ミクロ栄養素ボーナス
-    # 亜鉛とマグネシウムが十分(合計10mg以上)なら加点
+    # ミネラルボーナス
     if (nutrients['zinc'] + nutrients['magnesium']) > 10:
         i_score += 10
-        ind_log.append("・抗ストレスミネラル(Zn, Mg)の充足 (+10)")
+        ind_log.append("・抗ストレスミネラル充足 (+10)")
     
-    # ビタミンCボーナス（ストレスレベルHighの場合に重要）
-    if stress_level == "High" and nutrients['vit_c'] > 20:
-        i_score += 10
-        ind_log.append("・高ストレス時に必要なビタミンCの供給 (+10)")
-
     i_score = max(0, min(i_score, 100))
     breakdown["indicator"]["score"] = i_score
     breakdown["indicator"]["reasons"] = ind_log
 
-    # 総合スコア
     final_score = int(h_score * 0.4 + r_score * 0.2 + i_score * 0.4)
-    
     return final_score, breakdown
 
 def predict_constitution(answers):
-    """食習慣から体質タイプを推定する(4択対応版)"""
     heavy_carbs = answers.get("carbs") in ["多い(毎日大盛り)", "過剰(菓子パン等含む)"]
     heavy_gluten = answers.get("gluten") in ["週3-5回", "ほぼ毎日"]
-    
     heavy_fastfood = answers.get("fastfood") in ["週3回以上"]
     heavy_procmeat = answers.get("processed_meat") in ["週3-5回", "ほぼ毎日"]
-    
     low_protein = answers.get("protein") in ["1日1食", "それ以下"]
     low_fish = answers.get("fish") in ["月1-3回", "ほとんど食べない"]
 
@@ -375,114 +380,134 @@ def draw_score_gauge(score):
     fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
     return fig
 
-# --- ページ定義: 入力画面 (Page 1) ---
+# --- ページ定義: 入力画面 (Page 1: 分割ステップ) ---
 
 def page_input_screen():
     st.title("メンタルヘルス食習慣チェッカー")
-    st.markdown("### Step 1: 食習慣アンケートと食事画像の入力")
-
-    with st.expander("▶ 開発者オプション: LogMeal API設定"):
-        api_token = st.text_input("LogMeal API Token (空欄の場合はデモモード)", type="password")
-
-    col1, col2 = st.columns([1, 1.2], gap="medium")
     
-    with col1:
-        st.subheader("📷 直近の食事画像")
+    # 進捗バーの表示
+    step = st.session_state['input_step']
+    progress_val = (step - 1) / 3
+    if step == 3: progress_val = 1.0 # 完了
+    
+    st.progress(progress_val)
+    st.caption(f"Step {step} / 3")
+
+    # --- Step 1: 質問 1-10 ---
+    if step == 1:
+        st.subheader("📝 食習慣チェック (Part 1/2)")
+        st.info("まずは基本的な食習慣について教えてください。(1-10問目)")
+        
+        with st.form("habit_form_1"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("##### 基礎栄養バランス")
+                q_gluten = st.radio("1. グルテン(小麦)", ["週1回未満", "週1-2回", "週3-5回", "ほぼ毎日"], index=None)
+                q_prot = st.radio("2. タンパク質摂取", ["毎食摂取", "1日2食", "1日1食", "それ以下"], index=None)
+                q_fiber = st.radio("3. 食物繊維(野菜)", ["1日3皿分以上", "1日2皿分", "1日1皿分", "それ以下"], index=None)
+                q_carbs = st.radio("4. 糖質(ご飯・パン等)", ["適量(茶碗1杯/食)", "やや多い(時々大盛り)", "多い(毎日大盛り)", "過剰(菓子パン等含む)"], index=None)
+                q_fish = st.radio("5. 魚全般", ["週3回以上", "週1-2回", "月1-3回", "ほとんど食べない"], index=None)
+            
+            with col2:
+                st.markdown("##### 食品の質")
+                q_chicken = st.radio("6. 鶏肉", ["週3回以上", "週1-2回", "月1-3回", "ほとんど食べない"], index=None)
+                q_fastfood = st.radio("7. ファストフード", ["月1回未満", "月2-3回", "週1-2回", "週3回以上"], index=None)
+                q_procmeat = st.radio("8. 加工肉(ハム等)", ["週1回未満", "週1-2回", "週3-5回", "ほぼ毎日"], index=None)
+                q_fermented = st.radio("9. 発酵食品(納豆・キムチ)", ["ほぼ毎日", "週3-4回", "週1-2回", "それ以下"], index=None)
+                q_bluefish = st.radio("10. 青魚(Omega-3)", ["週2回以上", "週1回", "月1-3回", "ほとんど食べない"], index=None)
+            
+            submitted_1 = st.form_submit_button("次へ (質問 11-20へ)", type="primary")
+            
+            if submitted_1:
+                required = [q_gluten, q_prot, q_fiber, q_carbs, q_fish, q_chicken, q_fastfood, q_procmeat, q_fermented, q_bluefish]
+                if any(x is None for x in required):
+                    st.error("すべての項目に回答してください。")
+                else:
+                    # 回答を保存
+                    st.session_state['habit_answers'].update({
+                        "gluten": q_gluten, "protein": q_prot, "fiber": q_fiber, "carbs": q_carbs, "fish": q_fish,
+                        "chicken": q_chicken, "fastfood": q_fastfood, "processed_meat": q_procmeat, "fermented": q_fermented, "bluefish": q_bluefish
+                    })
+                    st.session_state['input_step'] = 2
+                    st.rerun()
+
+    # --- Step 2: 質問 11-20 & プロフィール ---
+    elif step == 2:
+        st.subheader("📝 生活習慣・メンタルチェック (Part 2/2)")
+        st.info("続いて、生活習慣や体質について教えてください。(11-20問目)")
+        
+        with st.form("habit_form_2"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("##### 生活リズム・水分")
+                q_water = st.radio("11. 1日の水分摂取量(水・茶)", ["1.5L以上", "1.0L-1.5L", "1.0L未満", "あまり飲まない"], index=None)
+                q_caffeine = st.radio("12. カフェイン(コーヒー等)", ["飲まない", "1日1-2杯", "1日3-4杯", "1日5杯以上"], index=None)
+                q_alcohol = st.radio("13. アルコール頻度", ["飲まない", "週1-2回", "週3-5回", "ほぼ毎日"], index=None)
+                q_eat_speed = st.radio("14. 食べる速さ", ["ゆっくり(20分以上)", "普通(10-20分)", "早い(10分未満)", "極めて早い"], index=None)
+                q_breakfast = st.radio("15. 朝食の習慣", ["毎日食べる", "週3-4回", "週1-2回", "食べない"], index=None)
+            
+            with col2:
+                st.markdown("##### 間食・嗜好")
+                q_late_night = st.radio("16. 就寝前の食事", ["寝る3時間前まで", "寝る2時間前", "寝る1時間前", "寝る直前が多い"], index=None)
+                q_veg_variety = st.radio("17. 1日の野菜の種類", ["5種類以上", "3-4種類", "1-2種類", "ほぼ食べない"], index=None)
+                q_dairy = st.radio("18. 乳製品(牛乳・チーズ)", ["適度(1日1杯/個)", "飲まない/食べない", "やや多い", "過剰に摂る"], index=None)
+                q_snack = st.radio("19. 甘いおやつ・間食", ["ほとんど食べない", "週1-2回", "週3-4回", "毎日甘いもの"], index=None)
+                q_oil = st.radio("20. 油の質(主に使用するもの)", ["オリーブ/アマニ油中心", "サラダ油/キャノーラ油", "動物性油脂", "揚げ物が多い"], index=None)
+            
+            st.markdown("---")
+            st.markdown("**👤 プロフィール**")
+            stress_level = st.select_slider("直近のストレスレベル", options=["Low", "Medium", "High"])
+            selected_allergies = st.multiselect("アレルギー・除去対象", ["グルテン", "カゼイン", "卵", "乳製品", "そば", "落花生", "えび", "かに"])
+            medical_history = st.text_input("既往歴 (任意)", placeholder="例: 糖尿病、高血圧、貧血など")
+            selected_supplements = st.multiselect("サプリメント摂取状況 (任意)", ["ビタミンD", "亜鉛", "ケルセチン", "乳酸菌"])
+
+            col_prev, col_next = st.columns([1, 1])
+            with col_prev:
+                # 戻るボタン機能（stateを戻すだけだがform内では使いにくいので、基本は次へを推奨）
+                pass 
+            with col_next:
+                submitted_2 = st.form_submit_button("次へ (画像アップロードへ)", type="primary")
+            
+            if submitted_2:
+                required = [q_water, q_caffeine, q_alcohol, q_eat_speed, q_breakfast, q_late_night, q_veg_variety, q_dairy, q_snack, q_oil]
+                if any(x is None for x in required):
+                    st.error("すべての項目に回答してください。")
+                else:
+                    # 回答を保存
+                    st.session_state['habit_answers'].update({
+                        "water": q_water, "caffeine": q_caffeine, "alcohol": q_alcohol, "eat_speed": q_eat_speed,
+                        "breakfast": q_breakfast, "late_night": q_late_night, "veg_variety": q_veg_variety,
+                        "dairy": q_dairy, "snack": q_snack, "oil": q_oil
+                    })
+                    st.session_state['user_profile'] = {
+                        "stress_level": stress_level, "allergies": selected_allergies,
+                        "medical_history": medical_history, "supplements": selected_supplements
+                    }
+                    st.session_state['input_step'] = 3
+                    st.rerun()
+
+    # --- Step 3: 画像アップロード & 解析開始 ---
+    elif step == 3:
+        st.subheader("📷 食事画像の解析")
+        st.success("✅ アンケート回答完了！ 最後に食事の写真をアップロードしてください。")
+        
+        with st.expander("▶ 開発者オプション: LogMeal API設定"):
+            api_token = st.text_input("LogMeal API Token (空欄の場合はデモモード)", type="password")
+
         uploaded_file = st.file_uploader("写真を選択", type=["jpg", "png", "jpeg"])
+        
         if uploaded_file:
             st.image(uploaded_file, width=300)
-    
-    with col2:
-        st.subheader("📝 食習慣チェック (4択)")
-        with st.form("habit_form"):
-            st.markdown("##### ① 加点項目 (積極摂取)")
+            st.session_state['uploaded_file'] = uploaded_file
             
-            q_prot = st.radio("2. タンパク質摂取", 
-                              ["毎食摂取", "1日2食", "1日1食", "それ以下"], 
-                              horizontal=True, index=None)
-            
-            q_fiber = st.radio("3. 食物繊維(野菜)", 
-                               ["1日3皿分以上", "1日2皿分", "1日1皿分", "それ以下"], 
-                               horizontal=True, index=None)
-            
-            q_fish = st.radio("5. 魚全般", 
-                              ["週3回以上", "週1-2回", "月1-3回", "ほとんど食べない"], 
-                              horizontal=True, index=None)
-            
-            q_chicken = st.radio("6. 鶏肉", 
-                                 ["週3回以上", "週1-2回", "月1-3回", "ほとんど食べない"], 
-                                 horizontal=True, index=None)
-            
-            q_fermented = st.radio("9. 納豆・キムチ", 
-                                   ["ほぼ毎日", "週3-4回", "週1-2回", "それ以下"], 
-                                   horizontal=True, index=None)
-            
-            q_bluefish = st.radio("10. 青魚(Omega-3)", 
-                                  ["週2回以上", "週1回", "月1-3回", "ほとんど食べない"], 
-                                  horizontal=True, index=None)
-            
-            st.markdown("##### ② 減点・調整項目 (リスク管理)")
-            
-            q_gluten = st.radio("1. グルテン(小麦)", 
-                                ["週1回未満", "週1-2回", "週3-5回", "ほぼ毎日"], 
-                                horizontal=True, index=None)
-            
-            q_carbs = st.radio("4. 糖質(ご飯・パン等)", 
-                               ["適量(茶碗1杯/食)", "やや多い(時々大盛り)", "多い(毎日大盛り)", "過剰(菓子パン等含む)"], 
-                               horizontal=True, index=None)
-            
-            q_fastfood = st.radio("7. ファストフード", 
-                                  ["月1回未満", "月2-3回", "週1-2回", "週3回以上"], 
-                                  horizontal=True, index=None)
-            
-            q_procmeat = st.radio("8. 加工肉(ハム等)", 
-                                  ["週1回未満", "週1-2回", "週3-5回", "ほぼ毎日"], 
-                                  horizontal=True, index=None)
-
-            st.markdown("---")
-            st.markdown("**👤 プロフィール・体質情報**")
-            
-            # ストレスレベル入力の復活
-            stress_level = st.select_slider("直近のストレスレベル", options=["Low", "Medium", "High"])
-
-            selected_allergies = st.multiselect(
-                "アレルギー・除去対象",
-                options=["グルテン", "カゼイン", "卵", "乳製品", "そば", "落花生", "えび", "かに"],
-                default=[]
-            )
-            medical_history = st.text_input("既往歴 (任意)", placeholder="例: 糖尿病、高血圧、貧血など")
-            selected_supplements = st.multiselect(
-                "サプリメント摂取状況 (任意)",
-                options=["ビタミンD", "亜鉛", "ケルセチン", "乳酸菌"],
-                default=[]
-            )
-
-            submit_button = st.form_submit_button("分析を開始する", type="primary")
-
-            if submit_button:
-                required_fields = [q_prot, q_fiber, q_fish, q_chicken, q_fermented, q_bluefish, q_gluten, q_carbs, q_fastfood, q_procmeat]
-                
-                if any(x is None for x in required_fields):
-                    st.error("⚠️ 食習慣チェックのすべての項目に回答してください。")
-                elif uploaded_file is None:
-                    st.error("⚠️ 食事の画像をアップロードしてください。")
-                else:
-                    st.session_state['uploaded_file'] = uploaded_file
-                    st.session_state['habit_answers'] = {
-                        "protein": q_prot, "fiber": q_fiber, "fish": q_fish,
-                        "chicken": q_chicken, "fermented": q_fermented, "bluefish": q_bluefish,
-                        "gluten": q_gluten, "carbs": q_carbs, "fastfood": q_fastfood,
-                        "processed_meat": q_procmeat
-                    }
-                    st.session_state['user_profile'] = {
-                        "stress_level": stress_level,
-                        "allergies": selected_allergies,
-                        "medical_history": medical_history,
-                        "supplements": selected_supplements
-                    }
-                    st.session_state['ingredients_df'] = analyze_image(uploaded_file, api_token)
-                    st.session_state['page'] = 'result'
-                    st.rerun()
+            if st.button("分析を開始する", type="primary"):
+                st.session_state['ingredients_df'] = analyze_image(uploaded_file, api_token)
+                st.session_state['page'] = 'result'
+                st.rerun()
+        
+        if st.button("← アンケートに戻る"):
+            st.session_state['input_step'] = 2
+            st.rerun()
 
 # --- ページ定義: 結果画面 (Page 2) ---
 
@@ -490,6 +515,7 @@ def page_result_screen():
     st.title("分析結果レポート")
     if st.button("← 入力画面へ戻る"):
         st.session_state['page'] = 'input'
+        st.session_state['input_step'] = 1 # 最初からやり直す場合
         st.session_state['uploaded_file'] = None
         st.rerun()
     st.divider()
@@ -524,44 +550,23 @@ def page_result_screen():
     with n_col1:
         st.markdown("**基本栄養素 & PFC**")
         st.plotly_chart(draw_pfc_balance(nutrients['protein'], nutrients['fat'], nutrients['carbs']), use_container_width=True)
-        
         st.write(f"**🥩 タンパク質**: {nutrients['protein']} g")
-        st.caption("セロトニンやドーパミンなど、メンタルを安定させる神経伝達物質の材料です。不足すると意欲低下に繋がります。")
-        
         st.write(f"**🍚 糖質**: {nutrients['carbs']} g")
-        st.caption("脳のエネルギー源ですが、急激な変動（スパイク）はイライラや眠気の原因になります。")
-        
         st.write(f"**💧 脂質**: {nutrients['fat']} g")
-        st.caption("脳の構成成分の約60%は脂質です。良質な脂質は脳細胞膜の働きを助けます。")
 
     with n_col2:
         st.markdown("**食物繊維 & ビタミン**")
-        
-        st.write(f"**🥬 食物繊維**: 水溶性 {nutrients['fiber_sol']}g / 不溶性 {nutrients['fiber_insol']}g")
-        st.caption("「脳腸相関」により、腸内環境を整えることはメンタルの安定に直結します。")
-        
+        st.write(f"**🥬 食物繊維**: 水 {nutrients['fiber_sol']}g / 不 {nutrients['fiber_insol']}g")
         st.divider()
-        
         st.write(f"**💊 ビタミンB1**: {nutrients['vit_b1']} mg")
-        st.caption("糖質をエネルギーに変えるのに必須。不足するとイライラや疲労感が出やすくなります。")
-        
         st.write(f"**🍋 ビタミンC**: {nutrients['vit_c']} mg")
-        st.caption("抗ストレスホルモンの合成に大量に消費されます。ストレス対策に必須です。")
-        
         st.write(f"**☀️ ビタミンD**: {nutrients['vit_d']} μg")
-        st.caption("セロトニンの調節に関わり、不足はうつ症状のリスクを高めると言われています。")
 
     with n_col3:
         st.markdown("**ミネラル**")
-        
         st.write(f"**🔩 鉄分**: {nutrients['iron']} mg")
-        st.caption("セロトニンやドーパミンの合成に必要。不足は不安感やうつの原因になります。")
-        
         st.write(f"**🛡️ 亜鉛**: **{nutrients['zinc']} mg**")
-        st.caption("脳の神経伝達をスムーズにし、ストレス耐性を高めます。")
-        
         st.write(f"**🔋 マグネシウム**: **{nutrients['magnesium']} mg**")
-        st.caption("神経の興奮を鎮め、リラックス効果や良質な睡眠をサポートします。")
 
     st.divider()
 
@@ -582,7 +587,7 @@ def page_result_screen():
     with col_desc:
         st.markdown(f"### あなたの体質タイプ: **{constitution['type']}**")
         st.info(constitution['desc'])
-        st.write("このスコアは以下の3つの要素から総合的に算出されました。")
+        st.write("20項目のアンケートと食事内容から総合的に算出されました。")
 
     st.subheader("スコア算出の内訳")
     
@@ -592,7 +597,7 @@ def page_result_screen():
         st.markdown("#### A. 食習慣アンケート")
         st.metric("基礎スコア", f"{score_breakdown['habit']['score']} / 100")
         with st.container(height=300):
-            st.caption("日頃の食習慣に基づく基礎点です。")
+            st.caption("20問の回答に基づく基礎点です。")
             for r in score_breakdown['habit']['reasons']:
                 st.write(r)
 
@@ -600,7 +605,7 @@ def page_result_screen():
         st.markdown("#### B. 個別リスク因子")
         st.metric("調整スコア", f"{score_breakdown['risk']['score']} / 100")
         with st.container(height=300):
-            st.caption("ストレス、アレルギー整合性、サプリメントの相乗効果など、複数の変数を組み合わせたリスク判定です。")
+            st.caption("ストレス、アレルギー、サプリメントの状況による調整です。")
             for r in score_breakdown['risk']['reasons']:
                 st.write(r)
 
@@ -608,11 +613,11 @@ def page_result_screen():
         st.markdown("#### C. 個別推定指標")
         st.metric("食事適合スコア", f"{score_breakdown['indicator']['score']} / 100")
         with st.container(height=300):
-            st.caption("今回の食事が、体質や神経伝達物質生成(NT-Index)の観点で適切かを判定しています。")
+            st.caption("今回の食事が、体質や神経伝達物質生成(NT-Index)に適切かを判定。")
             for r in score_breakdown['indicator']['reasons']:
                 st.write(r)
 
-    st.success(f"**最終スコア算出式 (デモ用):** (習慣 {score_breakdown['habit']['score']}×0.4) + (リスク {score_breakdown['risk']['score']}×0.2) + (食事指標 {score_breakdown['indicator']['score']}×0.4) ≒ **{final_score}点**")
+    st.success(f"**最終スコア算出式 (Demo):** (習慣 {score_breakdown['habit']['score']}×0.4) + (リスク {score_breakdown['risk']['score']}×0.2) + (食事指標 {score_breakdown['indicator']['score']}×0.4) ≒ **{final_score}点**")
 
 # --- メインルーティング ---
 
@@ -623,4 +628,74 @@ elif st.session_state['page'] == 'result':
 
 # フッター
 st.markdown("---")
+with st.expander("▼ 研究背景と数理モデル (NNBIの理論構成)"):
+    st.markdown(r"""
+    ### ・ 変数の抽出と定義
+
+    #### A. ポジティブ因子
+
+    * $X_{fv}$: 果物・野菜の摂取量
+    * $X_{wg}$: 全粒穀物の摂取量
+    * $X_{nut}$: ナッツ・種子類の摂取量
+    * $X_{fish}$: 魚（オメガ3脂肪酸）の摂取量
+    * $X_{cop}$: 腸内細菌 *Coprococcus* 属の保有量/活性度
+    * $X_{dia}$: 腸内細菌 *Dialister* 属の保有量/活性度
+    * $X_{dop}$: ドーパミン代謝物の合成能
+
+    #### B. ネガティブ因子
+
+    * $X_{proc}$: 加工肉・赤肉の摂取量
+    * $X_{ref}$: 精製穀物（白米・パン等）の摂取量
+    * $X_{sug}$: 菓子・甘い飲み物の摂取量
+    * $X_{dys}$: ディスバイオシス（腸内環境の乱れ）指数
+
+    ---
+
+    #### ・プロトタイプ
+    メンタルヘルススコアを $M$ としたとき、モデルは以下のような式を学習して導き出す。
+
+    $$ M = \alpha + \sum_{i=1}^{n} w_i \cdot X_{i_{pos}} - \sum_{j=1}^{m} w_j \cdot X_{j_{neg}} + \epsilon $$
+
+    ここで：
+    * $w$（重み係数）：AIがデータから学習する「各要素の重要度」。例えば「野菜」がメンタルに与える影響が大きければ、$w$ の値は大きくなる。
+    * $\alpha$（切片）：ベースラインのメンタルヘルス値。
+    * $\epsilon$（誤差項）：個人差などのノイズ。
+
+    #### 複合処理（マルチモーダル学習）に関する計算式
+    腸脳相関から、単純な足し算だけでなく、相互作用項を入れることで、より精度の高いモデルを目指す。
+
+    $$ M_{complex} = w_1 X_{diet} + w_2 X_{microbiome} + w_3 (X_{diet} \times X_{microbiome}) $$
+
+    > **解説:** $w_3$ の項は、良い食事を摂り、かつ良い腸内細菌がいるとき、相乗効果でメンタルがさらに良くなるという現象をモデル化したもの。
+
+    ---
+    ### ※ 変数定義
+    
+    **A. ポジティブ変数 ($+$スコア)**
+    $X_{diet}$ : **良質な食事** (野菜・全粒穀物・魚・オリーブ油など / SMILES試験を基準に採用)
+    $X_{bio}$ : **有用な腸内細菌** (*Coprococcus*・*Dialister*活性度 / 腸脳相関)
+    $X_{dop}$ : **ドーパミン合成能** (タンパク質・鉄・ビタミンB群 / 神経伝達物質原料)
+
+    **B. ネガティブ変数 ($-$スコア)**
+    $X_{risk}$ : **リスク因子** (加工肉・砂糖・超加工食品 / 炎症性サイトカイン誘発)
+
+    ---
+
+    ### ※ 重み付けの理論式
+    各要素がメンタルヘルスに与える影響度を係数として定義。
+
+    $$
+    \text{NNBI} = \underbrace{0.35 \cdot X_{diet}}_{\text{食事パターン(35\%٪)}} + \underbrace{0.25 \cdot X_{bio}}_{\text{腸内環境(25\%٪)}} + \underbrace{0.20 \cdot X_{dop}}_{\text{ドーパミン(20\%٪)}} - \underbrace{0.20 \cdot X_{risk}}_{\text{リスク因子(20\%٪)}}
+    $$
+
+    ---
+
+    ### ※ 指標
+
+    $$
+    M_{pred} = \alpha + \sum w_i X_i + \epsilon
+    $$
+
+    """)
+
 st.caption("Developed for Nakazawa Okoshi Laboratory / WellComp B2 Research Demo")
